@@ -209,6 +209,9 @@ class DurableTurnLease:
         must not keep this turn active up to and past the deadline. A successful renewal
         is the only thing that moves the deadline.
 
+        A tick that starts past the deadline (the host slept, or the scheduler starved) makes one
+        holder-qualified attempt: expiry makes the row reclaimable, not taken. The row decides.
+
         The holder-qualified UPDATE fences a late refresher from a successor lease. The façade's
         finally sets ``stop`` before releasing, so a holder-fenced miss observed after stop is not
         a loss."""
@@ -220,7 +223,11 @@ class DurableTurnLease:
         # margin covers one BEGIN IMMEDIATE that blocks in SQLite's busy handler past the patience.
         patience = self._authority_deadline - _REFRESH_EXPIRY_MARGIN_S - started
         if patience <= 0:
-            return self._stop_on_exhausted_authority()
+            # No earlier tick could stop this turn in time, so stopping now protects nothing that the
+            # renewal does not: a taken row is a miss, a lock ends the turn below (the deadline passed).
+            logger.info("Session turn lease renewal is late (host sleep or a starved scheduler); "
+                        "asking the store who holds the row: %s", self._current_session_id())
+            patience = _REFRESH_WRITE_PATIENCE_S
         try:
             if self.db.refresh_session_turn_lease(
                 self._current_session_id(), self.holder, ttl_seconds=LEASE_TTL_SECONDS,
