@@ -45,8 +45,10 @@ class CompactingModel(BaseHTTPRequestHandler):
             self.server.blocked.set()
             self.server.release.wait(60)
         # Only the pressure turns are large: the followers must not trigger a second compaction.
+        # Three turns and the fourth prompt must stay clear of threshold_tokens whatever the host's prompt facts add: at 700
+        # repeats they estimate 11,939 of 12,000, and the length of a path decided when it compacted.
         reply = 'SUMMARY_RETAINED_FACTS' if body.get('model') == 'summary' else (
-            'ACK_' + str(text)[:40] + (' ' + 'historical detail ' * 700 if str(text).startswith('PRESSURE_') else ''))
+            'ACK_' + str(text)[:40] + (' ' + 'historical detail ' * 680 if str(text).startswith('PRESSURE_') else ''))
         message = {'role': 'assistant', 'content': reply}
         payload = json.dumps({'id': 'local', 'model': body.get('model'), 'choices': [
             {'index': 0, 'message': message, 'finish_reason': 'stop'}],
