@@ -268,15 +268,19 @@ class StreamingWaitMonitor:
         )
         _is_local_base = bool(self.agent.base_url) and is_local_endpoint(self.agent.base_url)
         # Only a server on this machine sleeps with it; a remote one kept working (or died).
-        sleep_watch = (SleepWatch(interval=0.3) if self.agent.base_url
-                       and is_loopback_host(urlsplit(self.agent.base_url).hostname) else None)
+        sleeps_with_us = bool(self.agent.base_url) and is_loopback_host(urlsplit(self.agent.base_url).hostname)
+        sleep_watch = SleepWatch(interval=0.3)
         self._lifetime = StreamLifetime(resolve_stream_max_lifetime(self._stream_stale_timeout))
         logger.debug("stream watchdog armed: stale=%.0fs cap=%.0fs model=%s", self._stream_stale_timeout,
                      self._lifetime.cap, self.api_kwargs.get("model", "unknown"))
         while not self._call_done.is_set():
             self._call_done.wait(timeout=0.3)
-            if sleep_watch is not None:
-                self._skip_sleep(sleep_watch.slept())
+            slept = sleep_watch.slept()
+            if sleeps_with_us:
+                self._skip_sleep(slept)
+            elif slept:  # or the stale kill below reads as a detector that fired that much too late
+                logger.info("Computer slept for %.0fs during a request to a remote provider; "
+                            "the stall timer counts that time.", slept)
             _hb_now = time.time()
             if _is_local_base and self._poll_local_load_notice(_hb_now):
                 continue

@@ -73,6 +73,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────
   detect:
     name: Detect affected areas
+    # A fork has no Blacksmith runner; fork-ci.yml tests its pull requests.
+    if: github.repository == 'NousResearch/hermes-agent'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 3
     outputs:
@@ -364,7 +366,7 @@ jobs:
       # its own check. It was never required here, because it is too slow
       # to block a merge. A separate run also stops it from holding this
       # run open. That is what blocked ``gh run rerun``.
-    if: always()
+    if: always() && github.repository == 'NousResearch/hermes-agent'
     # actions: read is for the timing report steps below (completed jobs' cache transfer logs).
     permissions:
       contents: read

@@ -57,6 +57,8 @@ jobs:
   # flake turns main red after the merge.
   detect:
     name: Detect affected areas
+    # A fork has no Blacksmith runner; fork-ci.yml tests its pull requests.
+    if: github.repository == 'NousResearch/hermes-agent'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:

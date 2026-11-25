@@ -3805,11 +3805,11 @@ class _StreamingCall(StreamingWaitMonitor):
         # connection, so shut down the killed attempt's own socket too — still
         # shutdown-only, never close (see the helper).
         _killed_response = self._attempt_stream_response
+        self._count_stale_attempt()  # before the abort: the woken worker may start the next attempt at once
         with contextlib.suppress(Exception):
             self._cancel_current_stream_attempt("stale_stream_kill")
             self.clients.close_once("stale_stream_kill")
         self._shutdown_stale_attempt_socket(_killed_response)
-        self._count_stale_attempt()
         self._rearm_or_abandon_after_kill(elapsed)
 
     def _abort_for_interrupt(self, stale_elapsed: float) -> None:
