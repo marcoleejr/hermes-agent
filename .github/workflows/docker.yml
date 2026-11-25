@@ -83,6 +83,8 @@ jobs:
   # never weakened.
   mode:
     name: Resolve release phase and affected areas
+    # A fork has no Blacksmith runner; fork-ci.yml tests its pull requests.
+    if: github.repository == 'NousResearch/hermes-agent'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:

@@ -1,0 +1,93 @@
+name: Fork CI
+
+# Pull-request checks for a fork of NousResearch/hermes-agent.
+#
+# ci.yaml, docker.yml and nix.yml run on the organisation's Blacksmith and large-runner labels. A
+# fork has none of them: each job waits 24 h for a runner, then GitHub cancels it and the pull
+# request stays red with nothing tested. Those workflows skip on a fork and this one runs what
+# standard Linux runners can hold: the blocking lints, the repository guards and the whole Linux
+# Python suite. The macOS, Windows, JS, Rust, docs, image and flake lanes do not run on a fork.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lints and guards (fork)
+    if: github.repository != 'NousResearch/hermes-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+        with:
+          # The health ratchet and the blob-size guard compare against HEAD^1, the base branch tip.
+          fetch-depth: 0
+
+      - name: Reject committed PR-infographic images
+        run: python3 scripts/ci/check_infographic_images.py
+
+      - uses: ./.github/actions/setup-pm
+        with:
+          cache-python: true
+
+      # The lints of lint.yml plus repo-guards.yml's case, lazy-deps, archive and blob-size guards.
+      - name: Run every blocking lint check
+        run: just check --base HEAD^1
+
+      - name: Check the checkout is clean
+        uses: ./.github/actions/check-clean-worktree
+
+  test:
+    # tests.yml runs 3 slices on 32 vCPUs. The same suite on 4 vCPUs needs more, smaller slices.
+    name: Python tests (fork, ${{ matrix.slice }}/12)
+    if: github.repository != 'NousResearch/hermes-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+
+      - name: Install ripgrep (prebuilt binary)
+        run: |
+          set -euo pipefail
+          RG_VERSION=15.1.0
+          RG_SHA256=1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599
+          RG_TARBALL=ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz
+          cd "$RUNNER_TEMP"
+          curl -sSfL --retry 3 --retry-delay 5 -o "$RG_TARBALL" \
+            "https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${RG_TARBALL}"
+          echo "${RG_SHA256}  ${RG_TARBALL}" | sha256sum -c -
+          tar -xzf "$RG_TARBALL"
+          sudo mv "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl/rg" /usr/local/bin/rg
+          rg --version
+
+      - name: Set up locked Python and test dependencies
+        uses: ./.github/actions/setup-pm
+        with:
+          packages: pnpm
+          extras: '["all", "anthropic", "bedrock", "mistral", "fal", "modal", "daytona", "parallel-web", "keychain"]'
+          test-environment: 'true'
+
+      - name: Run tests
+        run: just test-all
+        env:
+          HERMES_TEST_SLICE: ${{ matrix.slice }}/12
+          HERMES_TEST_FORKSERVER: "1"
+          HERMES_TEST_WORKERS: 4
+          HERMES_TEST_FILE_TIMEOUT: 600
+          OPENROUTER_API_KEY: ""
+          OPENAI_API_KEY: ""
+          NOUS_API_KEY: ""
+
+      - name: Check the checkout is clean
+        uses: ./.github/actions/check-clean-worktree
